@@ -235,14 +235,21 @@ const SEED_ACCOUNTS: { name: string; email: string }[] = [
   { name: "Antigravity 07", email: "antigravity6257@gmail.com" },
   { name: "Antigraviy 10", email: "antigravity6260@gmail.com" },
   { name: "Antigraviy 11", email: "antigravity6261@gmail.com" },
+  { name: "Manthan 1234", email: "msdcvdshjd@gmail.com" },
+  { name: "Manthan 123", email: "manthan45679@gmail.com" },
+  { name: "Manthan", email: "antigravity7250@gmail.com" },
+  { name: "Antigravity _1", email: "antigravity7251@gmail.com" },
+  { name: "Antigravity _2", email: "antigravity7252@gmail.com" },
 ];
 
 export const seedAccountsIfEmpty = (): boolean => {
   const storage = loadStorage();
-  if (storage.accounts.length > 0) return false;
+  const existingEmails = new Set(storage.accounts.map((a) => a.email.toLowerCase()));
+  const toAdd = SEED_ACCOUNTS.filter((s) => !existingEmails.has(s.email.toLowerCase()));
+  if (toAdd.length === 0) return false;
 
   const now = Date.now();
-  const accounts: Account[] = SEED_ACCOUNTS.map((seed, i) => ({
+  const newAccounts: Account[] = toAdd.map((seed, i) => ({
     id: crypto.randomUUID(),
     name: seed.name,
     email: seed.email,
@@ -251,12 +258,11 @@ export const seedAccountsIfEmpty = (): boolean => {
     usedAt: null,
     resetAt: null,
     usageDuration: SEVEN_DAYS,
-    createdAt: now - (SEED_ACCOUNTS.length - i) * 60000,
-    updatedAt: now - (SEED_ACCOUNTS.length - i) * 60000,
+    createdAt: now - (toAdd.length - i) * 60000,
+    updatedAt: now - (toAdd.length - i) * 60000,
   }));
 
-  storage.accounts = accounts;
-  storage.globalDuration = SEVEN_DAYS;
+  storage.accounts.push(...newAccounts);
   saveStorage(storage);
   return true;
 };
