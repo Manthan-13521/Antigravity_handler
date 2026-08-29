@@ -619,11 +619,20 @@ export default function Page() {
                         {acc.resetAt ? new Date(acc.resetAt).toLocaleString() : "—"}
                       </td>
                       <td className="p-3 text-right">
-                        <AccountRow
-                          id={acc.id}
-                          isUsed={isUsed}
-                          onToggle={() => handleToggle(acc.id)}
-                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <AccountRow
+                            id={acc.id}
+                            isUsed={isUsed}
+                            onToggle={() => handleToggle(acc.id)}
+                          />
+                          <button
+                            onClick={() => handleDelete(acc.id)}
+                            className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-700 border border-gray-600 text-red-400 hover:bg-red-600/20 hover:text-red-300 transition-colors"
+                            title="Delete account"
+                          >
+                            <Trash className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
