@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Check, X, Edit, Trash, MoreVertical, Flag, Search, Mail, Zap, AlertCircle, CheckCircle, Timer, Info } from "lucide-react";
 
-import { getAccounts, saveStorage, getGlobalDuration, setGlobalDuration, addAccount, updateAccount, deleteAccount, importData, exportData, clearAllData, reconcileExpiration } from "./lib/account-manager/storage";
+import { getAccounts, saveStorage, getGlobalDuration, setGlobalDuration, addAccount, updateAccount, deleteAccount, importData, exportData, clearAllData, reconcileExpiration, seedAccountsIfEmpty } from "./lib/account-manager/storage";
 import { getCountdownText, getStatusLabel, getSortOrder, getRecommendedSortOrder, checkExpiration } from "./lib/account-manager/expiration";
 import { DEFAULT_GLOBAL_DURATION, DURATION_LABELS, Account } from "./lib/account-manager/types";
 
@@ -52,6 +52,7 @@ export default function Page() {
 
   // Load from localStorage
   useEffect(() => {
+    seedAccountsIfEmpty();
     const stored = getAccounts();
     if (stored.length > 0) {
       setAccounts(stored);

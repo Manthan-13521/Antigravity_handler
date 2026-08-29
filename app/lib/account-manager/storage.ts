@@ -216,6 +216,51 @@ export const clearAllData = (): boolean => {
   }
 };
 
+const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+
+const SEED_ACCOUNTS: { name: string; email: string }[] = [
+  { name: "Manthan Jaiswal", email: "manthanjaiswal902@gmail.com" },
+  { name: "MANTHAN No", email: "manth4050@gmail.com" },
+  { name: "Manthan Buisness", email: "manth6250@gmail.com" },
+  { name: "Harsh", email: "h8539686@gmail.com" },
+  { name: "Arun", email: "noreplyaruniceream.in@gmail.com" },
+  { name: "Yash", email: "y56152268@gmail.com" },
+  { name: "Dinesh", email: "d73653820@gmail.com" },
+  { name: "Swim", email: "swim6250@gmail.com" },
+  { name: "gamma", email: "g00358127@gmail.com" },
+  { name: "MANTHAN JAISWAL", email: "24951a05c3@iare.ac.in" },
+  { name: "Antigraviy Q", email: "qantigraviy@gmail.com" },
+  { name: "Manthan Jaiswal", email: "m98651766@gmail.com" },
+  { name: "Anti gravity 01", email: "antigravity6250@gmail.com" },
+  { name: "Antigravity 07", email: "antigravity6257@gmail.com" },
+  { name: "Antigraviy 10", email: "antigravity6260@gmail.com" },
+  { name: "Antigraviy 11", email: "antigravity6261@gmail.com" },
+];
+
+export const seedAccountsIfEmpty = (): boolean => {
+  const storage = loadStorage();
+  if (storage.accounts.length > 0) return false;
+
+  const now = Date.now();
+  const accounts: Account[] = SEED_ACCOUNTS.map((seed, i) => ({
+    id: crypto.randomUUID(),
+    name: seed.name,
+    email: seed.email,
+    notes: "",
+    status: "available" as AccountStatus,
+    usedAt: null,
+    resetAt: null,
+    usageDuration: SEVEN_DAYS,
+    createdAt: now - (SEED_ACCOUNTS.length - i) * 60000,
+    updatedAt: now - (SEED_ACCOUNTS.length - i) * 60000,
+  }));
+
+  storage.accounts = accounts;
+  storage.globalDuration = SEVEN_DAYS;
+  saveStorage(storage);
+  return true;
+};
+
 export const reconcileExpiration = (): Account[] => {
   const storage = loadStorage();
   const now = Date.now();
