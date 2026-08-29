@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Trash, Flag, Search, AlertCircle, CheckCircle, Info, Zap } from "lucide-react";
+import { Trash, Flag, Search, AlertCircle, CheckCircle, Info, Zap, Menu, X } from "lucide-react";
 
 import { getAccounts, saveStorage, getGlobalDuration, setGlobalDuration, addAccount, deleteAccount, importData, exportData, reconcileExpiration, seedAccountsIfEmpty } from "./lib/account-manager/storage";
 import { getCountdownText, getStatusLabel, getSortOrder, getRecommendedSortOrder, checkExpiration } from "./lib/account-manager/expiration";
@@ -15,13 +15,13 @@ function AccountCheckbox({ checked, onToggle, deleteMode }: { checked: boolean; 
     <button
       type="button"
       onClick={onToggle}
-      className={`w-6 h-6 rounded flex items-center justify-center transition-all duration-150 ${
-        checked
-          ? "bg-[var(--accent)] border border-[var(--accent-dim)] text-white checkbox-checked"
-          : deleteMode
-            ? "border-2 border-[var(--text-muted)] text-transparent hover:border-[var(--accent)] hover:bg-[var(--accent-glow)]"
-            : "border-2 border-[var(--border)] text-transparent hover:border-[var(--accent)] hover:bg-[var(--accent-glow)]"
-      }`}
+      className="w-7 h-7 min-w-[28px] min-h-[28px] rounded flex items-center justify-center transition-all"
+      style={{
+        background: checked ? "var(--accent)" : "transparent",
+        border: `2px solid ${checked ? "var(--accent)" : deleteMode ? "var(--danger)" : "var(--border)"}`,
+        color: checked ? "white" : "transparent",
+        boxShadow: checked ? "0 0 12px rgba(34, 197, 94, 0.4)" : "none",
+      }}
     >
       {checked && (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
@@ -34,18 +34,19 @@ function AccountCheckbox({ checked, onToggle, deleteMode }: { checked: boolean; 
 
 function StatusBadge({ label, countdown }: { label: string; countdown: string }) {
   const cls = label === "available"
-    ? "bg-[var(--accent-glow)] text-[var(--accent)] border-[var(--accent)]/20"
+    ? "bg-[var(--accent-glow)] text-[var(--accent)]"
     : label === "used"
-      ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+      ? "bg-amber-500/10 text-amber-400"
       : label === "expiringSoon"
-        ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
-        : "bg-red-500/10 text-red-400 border-red-500/20";
+        ? "bg-yellow-500/10 text-yellow-400"
+        : "bg-red-500/10 text-red-400";
 
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium border ${cls}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] sm:text-[11px] font-medium ${cls}`}>
       {label === "available" && <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse" />}
-      {label}
-      {countdown !== "—" && <span className="opacity-60">| {countdown}</span>}
+      <span className="hidden sm:inline">{label}</span>
+      <span className="sm:hidden">{label === "available" ? "AVAIL" : label === "used" ? "USED" : label === "expiringSoon" ? "EXP" : label}</span>
+      {countdown !== "—" && <span className="opacity-60 hidden sm:inline">| {countdown}</span>}
     </span>
   );
 }
@@ -63,7 +64,7 @@ function formatMs(ms: number): string {
   const d = Math.floor(ms / 86400000);
   const h = Math.floor((ms % 86400000) / 3600000);
   const m = Math.floor((ms % 3600000) / 60000);
-  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (d > 0) return `${d}d ${h}h`;
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
 }
@@ -78,8 +79,10 @@ export default function Page() {
   const [toast, setToast] = useState<{ type: "success" | "info" | "error"; title: string; description: string } | null>(null);
   const [deleteMode, setDeleteMode] = useState(false);
   const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
+  const [showSearch, setShowSearch] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     seedAccountsIfEmpty();
@@ -97,6 +100,10 @@ export default function Page() {
   }, [accounts, globalDuration, isModalOpen]);
 
   useEffect(() => { checkExpiration(); }, []);
+
+  useEffect(() => {
+    if (showSearch && searchInputRef.current) searchInputRef.current.focus();
+  }, [showSearch]);
 
   const accountMap = useMemo(() => {
     const map = new Map<string, Account>();
@@ -224,27 +231,17 @@ export default function Page() {
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
       {/* Header */}
-      <header className="border-b" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-        <div className="max-w-[1400px] mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "var(--accent-glow)" }}>
-              <Zap className="w-5 h-5" style={{ color: "var(--accent)" }} />
+      <header className="border-b sticky top-0 z-40" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+        <div className="max-w-[1400px] mx-auto px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center" style={{ background: "var(--accent-glow)" }}>
+              <Zap className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: "var(--accent)" }} />
             </div>
-            <span className="text-lg font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>Antigravity</span>
+            <span className="text-base sm:text-lg font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>Antigravity</span>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--text-muted)" }} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search..."
-                className="pl-9 rounded-lg h-9 w-48 text-sm focus:outline-none focus:ring-1 transition-all"
-                style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)", ['--tw-ring-color' as string]: "var(--accent)" }}
-              />
-            </div>
-            <div className="flex items-center gap-1 text-xs">
+          <div className="flex items-center gap-2">
+            {/* Desktop filters */}
+            <div className="hidden md:flex items-center gap-1 text-xs">
               {(["recommended", "availableFirst", "resetSoonest", "accountName"] as const).map((key, i) => (
                 <span key={key}>
                   {i > 0 && <span style={{ color: "var(--text-muted)" }} className="mx-0.5">/</span>}
@@ -256,29 +253,86 @@ export default function Page() {
                       background: sortBy === key ? "var(--accent-glow)" : "transparent",
                     }}
                   >
-                    {key === "recommended" ? "ALL" : key === "availableFirst" ? "AVAIL" : key === "resetSoonest" ? "EXPIRING" : "NAME"}
+                    {key === "recommended" ? "ALL" : key === "availableFirst" ? "AVAIL" : key === "resetSoonest" ? "EXP" : "NAME"}
                   </button>
                 </span>
               ))}
             </div>
+            {/* Mobile search toggle */}
+            <button
+              onClick={() => { setShowSearch(!showSearch); if (showSearch) setSearchQuery(""); }}
+              className="md:hidden w-9 h-9 flex items-center justify-center rounded-lg transition-colors"
+              style={{ color: showSearch ? "var(--accent)" : "var(--text-secondary)", background: showSearch ? "var(--accent-glow)" : "var(--surface-elevated)" }}
+            >
+              {showSearch ? <X className="w-4 h-4" /> : <Search className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+        {/* Mobile search bar */}
+        {showSearch && (
+          <div className="px-3 sm:px-6 pb-3 md:hidden">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--text-muted)" }} />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search accounts..."
+                className="pl-9 rounded-lg h-10 w-full text-sm focus:outline-none"
+                style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+              />
+            </div>
+          </div>
+        )}
+        {/* Desktop search bar */}
+        <div className="hidden md:block px-6 pb-3">
+          <div className="relative max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--text-muted)" }} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search accounts..."
+              className="pl-9 rounded-lg h-9 w-full text-sm focus:outline-none"
+              style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+            />
           </div>
         </div>
       </header>
 
+      {/* Mobile filters bar */}
+      <div className="md:hidden px-3 py-2 flex gap-1 overflow-x-auto" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+        {(["recommended", "availableFirst", "resetSoonest", "accountName"] as const).map((key) => (
+          <button
+            key={key}
+            onClick={() => setSortBy(key)}
+            className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all flex-shrink-0"
+            style={{
+              color: sortBy === key ? "var(--accent)" : "var(--text-muted)",
+              background: sortBy === key ? "var(--accent-glow)" : "var(--surface-elevated)",
+              border: `1px solid ${sortBy === key ? "var(--accent)" : "var(--border)"}`,
+            }}
+          >
+            {key === "recommended" ? "ALL" : key === "availableFirst" ? "AVAILABLE" : key === "resetSoonest" ? "EXPIRING" : "NAME"}
+          </button>
+        ))}
+      </div>
+
       {/* Stats */}
       <div className="border-b" style={{ borderColor: "var(--border-subtle)" }}>
-        <div className="max-w-[1400px] mx-auto px-6 py-3">
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="max-w-[1400px] mx-auto px-3 sm:px-6 py-3">
+          <div className="grid grid-cols-5 gap-1.5 sm:gap-3">
             {[
               { label: "TOTAL", value: stats.total, color: "var(--text-primary)" },
-              { label: "AVAILABLE", value: stats.available, color: "var(--accent)" },
-              { label: "IN USE", value: stats.used, color: "var(--warning)" },
-              { label: "EXPIRING", value: stats.expiringSoon, color: "#eab308" },
-              { label: "RESET TODAY", value: stats.resetToday, color: "var(--danger)" },
+              { label: "AVAIL", value: stats.available, color: "var(--accent)" },
+              { label: "USED", value: stats.used, color: "var(--warning)" },
+              { label: "EXP", value: stats.expiringSoon, color: "#eab308" },
+              { label: "TODAY", value: stats.resetToday, color: "var(--danger)" },
             ].map((s) => (
-              <div key={s.label} className="rounded-lg px-3 py-2" style={{ background: "var(--surface)", border: "1px solid var(--border-subtle)" }}>
-                <div className="text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>{s.label}</div>
-                <div className="text-2xl font-bold mt-0.5" style={{ color: s.color }}>{s.value}</div>
+              <div key={s.label} className="rounded-lg px-1.5 sm:px-3 py-2" style={{ background: "var(--surface)", border: "1px solid var(--border-subtle)" }}>
+                <div className="text-[8px] sm:text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>{s.label}</div>
+                <div className="text-base sm:text-2xl font-bold mt-0.5" style={{ color: s.color }}>{s.value}</div>
               </div>
             ))}
           </div>
@@ -286,64 +340,67 @@ export default function Page() {
       </div>
 
       {/* Main content */}
-      <div className="max-w-[1400px] mx-auto px-6 py-6">
+      <div className="max-w-[1400px] mx-auto px-3 sm:px-6 py-4 sm:py-6">
         {/* Next Available */}
-        <div className="rounded-xl p-4 mb-5" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(234, 179, 8, 0.1)" }}>
-              <Flag className="w-4 h-4 text-yellow-400" />
+        <div className="rounded-xl p-3 sm:p-4 mb-4 sm:mb-5" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(234, 179, 8, 0.1)" }}>
+              <Flag className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-yellow-400" />
             </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>Next Available</div>
+            <div className="min-w-0">
+              <div className="text-[9px] sm:text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>Next Available</div>
               {nextAvailable ? (
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-sm font-semibold" style={{ color: nextAvailable.label === "Available now" ? "var(--accent)" : "var(--warning)" }}>
+                  <span className="text-xs sm:text-sm font-semibold truncate" style={{ color: nextAvailable.label === "Available now" ? "var(--accent)" : "var(--warning)" }}>
                     {nextAvailable.label}
                   </span>
-                  {nextAvailable.resetText && <span className="text-xs" style={{ color: "var(--text-muted)" }}>Resets {nextAvailable.resetText}</span>}
+                  {nextAvailable.resetText && <span className="text-[10px] sm:text-xs hidden sm:inline" style={{ color: "var(--text-muted)" }}>Resets {nextAvailable.resetText}</span>}
                 </div>
               ) : (
-                <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>All accounts available</p>
+                <p className="text-xs sm:text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>All available</p>
               )}
             </div>
           </div>
         </div>
 
         {/* Actions */}
-        <div className="mb-5 flex items-center gap-3 flex-wrap">
-          <button
-            onClick={() => { setIsModalOpen(true); setFormData({ name: "", email: "", notes: "", duration: globalDuration }); }}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all"
-            style={{ background: "var(--accent)", color: "white" }}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 5v14M5 12h14" /></svg>
-            Add Account
-          </button>
-          <button
-            onClick={toggleDeleteMode}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all"
-            style={{
-              background: deleteMode ? "var(--danger)" : "var(--surface-elevated)",
-              color: deleteMode ? "white" : "var(--text-secondary)",
-              border: `1px solid ${deleteMode ? "var(--danger)" : "var(--border)"}`,
-            }}
-          >
-            <Trash className="w-4 h-4" />
-            {deleteMode ? `Cancel (${selectedForDelete.size})` : "Delete"}
-          </button>
+        <div className="mb-4 sm:mb-5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setIsModalOpen(true); setFormData({ name: "", email: "", notes: "", duration: globalDuration }); }}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 rounded-lg text-sm font-medium transition-all"
+              style={{ background: "var(--accent)", color: "white", minHeight: "44px" }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 5v14M5 12h14" /></svg>
+              Add
+            </button>
+            <button
+              onClick={toggleDeleteMode}
+              className="inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 rounded-lg text-sm font-medium transition-all"
+              style={{
+                background: deleteMode ? "var(--danger)" : "var(--surface-elevated)",
+                color: deleteMode ? "white" : "var(--text-secondary)",
+                border: `1px solid ${deleteMode ? "var(--danger)" : "var(--border)"}`,
+                minHeight: "44px",
+              }}
+            >
+              <Trash className="w-4 h-4" />
+              {deleteMode ? `Cancel (${selectedForDelete.size})` : "Delete"}
+            </button>
+          </div>
           {deleteMode && selectedForDelete.size > 0 && (
             <button
               onClick={handleDeleteSelected}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all"
-              style={{ background: "var(--danger)", color: "white" }}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all"
+              style={{ background: "var(--danger)", color: "white", minHeight: "44px" }}
             >
               <Trash className="w-4 h-4" />
               Delete {selectedForDelete.size}
             </button>
           )}
-          <div className="ml-auto flex gap-2">
-            <button onClick={handleExport} className="px-4 py-2 rounded-lg text-xs font-medium transition-colors" style={{ background: "var(--surface-elevated)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>Export</button>
-            <label className="px-4 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer" style={{ background: "var(--surface-elevated)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
+          <div className="sm:ml-auto flex gap-2">
+            <button onClick={handleExport} className="flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-lg text-xs font-medium transition-colors" style={{ background: "var(--surface-elevated)", color: "var(--text-secondary)", border: "1px solid var(--border)", minHeight: "44px" }}>Export</button>
+            <label className="flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer text-center" style={{ background: "var(--surface-elevated)", color: "var(--text-secondary)", border: "1px solid var(--border)", minHeight: "44px", display: "flex", alignItems: "center", justifyContent: "center" }}>
               Import
               <input type="file" accept=".json" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleImport(e.target.files[0]); e.target.value = ""; }} />
             </label>
@@ -352,108 +409,145 @@ export default function Page() {
 
         {/* Modal */}
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }} onClick={() => setIsModalOpen(false)}>
-            <div className="rounded-2xl p-6 w-full max-w-md" style={{ background: "var(--surface)", border: "1px solid var(--border)" }} onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }} onClick={() => setIsModalOpen(false)}>
+            <div className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 sm:p-6 max-h-[90vh] overflow-y-auto" style={{ background: "var(--surface)", border: "1px solid var(--border)" }} onClick={(e) => e.stopPropagation()}>
               <h3 className="text-lg font-semibold mb-5" style={{ color: "var(--text-primary)" }}>Add Account</h3>
               <form onSubmit={(e) => { e.preventDefault(); if (formData.name.trim() && formData.email.trim()) handleAdd(formData); }}>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs font-medium mb-1.5 block uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Name</label>
-                    <input type="text" name="name" value={formData.name} onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Antigravity 16" className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1 transition-all" style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)" }} required autoFocus />
+                    <label className="text-[10px] sm:text-xs font-medium mb-1.5 block uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Name</label>
+                    <input type="text" name="name" value={formData.name} onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Antigravity 16" className="w-full rounded-lg px-3 py-3 sm:py-2.5 text-sm focus:outline-none" style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)", minHeight: "44px" }} required autoFocus />
                   </div>
                   <div>
-                    <label className="text-xs font-medium mb-1.5 block uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Email</label>
-                    <input type="email" name="email" value={formData.email} onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))} placeholder="account@gmail.com" className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1 transition-all" style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)" }} />
+                    <label className="text-[10px] sm:text-xs font-medium mb-1.5 block uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Email</label>
+                    <input type="email" name="email" value={formData.email} onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))} placeholder="account@gmail.com" className="w-full rounded-lg px-3 py-3 sm:py-2.5 text-sm focus:outline-none" style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)", minHeight: "44px" }} />
                   </div>
                   <div>
-                    <label className="text-xs font-medium mb-1.5 block uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Notes</label>
-                    <textarea name="notes" value={formData.notes} onChange={(e) => setFormData((p) => ({ ...p, notes: e.target.value }))} placeholder="Optional" className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1 resize-none transition-all" style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)" }} rows={2} />
+                    <label className="text-[10px] sm:text-xs font-medium mb-1.5 block uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Notes</label>
+                    <textarea name="notes" value={formData.notes} onChange={(e) => setFormData((p) => ({ ...p, notes: e.target.value }))} placeholder="Optional" className="w-full rounded-lg px-3 py-3 sm:py-2.5 text-sm focus:outline-none resize-none" style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)" }} rows={2} />
                   </div>
                   <div>
-                    <label className="text-xs font-medium mb-1.5 block uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Duration</label>
-                    <select value={formData.duration} onChange={(e) => setFormData((p) => ({ ...p, duration: parseInt(e.target.value, 10) }))} className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-1 appearance-none transition-all" style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)" }}>
+                    <label className="text-[10px] sm:text-xs font-medium mb-1.5 block uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Duration</label>
+                    <select value={formData.duration} onChange={(e) => setFormData((p) => ({ ...p, duration: parseInt(e.target.value, 10) }))} className="w-full rounded-lg px-3 py-3 sm:py-2.5 text-sm focus:outline-none appearance-none" style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)", minHeight: "44px" }}>
                       {DURATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </div>
                 </div>
                 <div className="flex gap-3 mt-6">
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors" style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-muted)" }}>Cancel</button>
-                  <button type="submit" className="flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors" style={{ background: "var(--accent)", color: "white" }}>Add</button>
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 rounded-lg px-4 py-3 sm:py-2.5 text-sm font-medium transition-colors" style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-muted)", minHeight: "44px" }}>Cancel</button>
+                  <button type="submit" className="flex-1 rounded-lg px-4 py-3 sm:py-2.5 text-sm font-medium transition-colors" style={{ background: "var(--accent)", color: "white", minHeight: "44px" }}>Add</button>
                 </div>
               </form>
             </div>
           </div>
         )}
 
-        {/* Table */}
+        {/* Table / Cards */}
         {accounts.length === 0 ? (
-          <div className="rounded-xl p-12 text-center" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-            <Zap className="w-12 h-12 mx-auto mb-4" style={{ color: "var(--text-muted)", opacity: 0.3 }} />
-            <h3 className="text-lg font-semibold" style={{ color: "var(--text-secondary)" }}>No accounts yet</h3>
-            <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>Add accounts to start tracking</p>
-            <button onClick={() => { setIsModalOpen(true); setFormData({ name: "", email: "", notes: "", duration: globalDuration }); }} className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium" style={{ background: "var(--accent)", color: "white" }}>
+          <div className="rounded-xl p-8 sm:p-12 text-center" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+            <Zap className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-4" style={{ color: "var(--text-muted)", opacity: 0.3 }} />
+            <h3 className="text-base sm:text-lg font-semibold" style={{ color: "var(--text-secondary)" }}>No accounts yet</h3>
+            <p className="text-xs sm:text-sm mt-1" style={{ color: "var(--text-muted)" }}>Add accounts to start tracking</p>
+            <button onClick={() => { setIsModalOpen(true); setFormData({ name: "", email: "", notes: "", duration: globalDuration }); }} className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium" style={{ background: "var(--accent)", color: "white", minHeight: "44px" }}>
               + Add Account
             </button>
           </div>
         ) : (
-          <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-            <table className="w-full">
-              <thead>
-                <tr style={{ background: "var(--surface)" }}>
-                  <th className="px-4 py-3 text-left text-[10px] uppercase tracking-wider font-medium w-12" style={{ color: "var(--text-muted)" }}>#</th>
-                  <th className="px-4 py-3 text-left text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>Account</th>
-                  <th className="px-4 py-3 text-left text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>Email</th>
-                  <th className="px-4 py-3 text-left text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>Status</th>
-                  <th className="px-4 py-3 text-left text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>Resets</th>
-                  <th className="px-4 py-3 text-right text-[10px] uppercase tracking-wider font-medium w-16" style={{ color: "var(--text-muted)" }}>{deleteMode ? "Select" : "Use"}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((id: string, idx: number) => {
-                  const acc = accountMap.get(id);
-                  if (!acc) return null;
-                  const { label, countdown } = getStatusLabel(acc.resetAt, acc.usageDuration);
-                  const isUsed = acc.status === "used";
-                  const isSelected = deleteMode && selectedForDelete.has(id);
-                  return (
-                    <tr
-                      key={id}
-                      className="table-row transition-colors"
-                      style={{
-                        borderBottom: "1px solid var(--border-subtle)",
-                        background: isSelected ? "rgba(239, 68, 68, 0.08)" : acc.status === "available" ? "var(--surface)" : "transparent",
-                      }}
-                    >
-                      <td className="px-4 py-3 text-xs w-12" style={{ color: "var(--text-muted)" }}>{idx + 1}</td>
-                      <td className="px-4 py-3 font-medium text-sm" style={{ color: "var(--text-primary)" }}>{acc.name}</td>
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--text-secondary)" }}>{acc.email}</td>
-                      <td className="px-4 py-3"><StatusBadge label={label} countdown={countdown} /></td>
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--text-muted)" }}>{acc.resetAt ? new Date(acc.resetAt).toLocaleString() : "—"}</td>
-                      <td className="px-4 py-3 text-right">
-                        <AccountCheckbox
-                          checked={isSelected || (!deleteMode && isUsed)}
-                          onToggle={() => deleteMode ? toggleSelect(id) : handleToggle(id)}
-                          deleteMode={deleteMode}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* Desktop table */}
+            <div className="hidden md:block rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+              <table className="w-full">
+                <thead>
+                  <tr style={{ background: "var(--surface)" }}>
+                    <th className="px-4 py-3 text-left text-[10px] uppercase tracking-wider font-medium w-12" style={{ color: "var(--text-muted)" }}>#</th>
+                    <th className="px-4 py-3 text-left text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>Account</th>
+                    <th className="px-4 py-3 text-left text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>Email</th>
+                    <th className="px-4 py-3 text-left text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>Status</th>
+                    <th className="px-4 py-3 text-left text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>Resets</th>
+                    <th className="px-4 py-3 text-right text-[10px] uppercase tracking-wider font-medium w-16" style={{ color: "var(--text-muted)" }}>{deleteMode ? "Select" : "Use"}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((id: string, idx: number) => {
+                    const acc = accountMap.get(id);
+                    if (!acc) return null;
+                    const { label, countdown } = getStatusLabel(acc.resetAt, acc.usageDuration);
+                    const isUsed = acc.status === "used";
+                    const isSelected = deleteMode && selectedForDelete.has(id);
+                    return (
+                      <tr
+                        key={id}
+                        className="table-row transition-colors"
+                        style={{
+                          borderBottom: "1px solid var(--border-subtle)",
+                          background: isSelected ? "rgba(239, 68, 68, 0.08)" : acc.status === "available" ? "var(--surface)" : "transparent",
+                        }}
+                      >
+                        <td className="px-4 py-3 text-xs w-12" style={{ color: "var(--text-muted)" }}>{idx + 1}</td>
+                        <td className="px-4 py-3 font-medium text-sm" style={{ color: "var(--text-primary)" }}>{acc.name}</td>
+                        <td className="px-4 py-3 text-xs" style={{ color: "var(--text-secondary)" }}>{acc.email}</td>
+                        <td className="px-4 py-3"><StatusBadge label={label} countdown={countdown} /></td>
+                        <td className="px-4 py-3 text-xs" style={{ color: "var(--text-muted)" }}>{acc.resetAt ? new Date(acc.resetAt).toLocaleString() : "—"}</td>
+                        <td className="px-4 py-3 text-right">
+                          <AccountCheckbox checked={isSelected || (!deleteMode && isUsed)} onToggle={() => deleteMode ? toggleSelect(id) : handleToggle(id)} deleteMode={deleteMode} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="md:hidden space-y-2">
+              {sorted.map((id: string, idx: number) => {
+                const acc = accountMap.get(id);
+                if (!acc) return null;
+                const { label, countdown } = getStatusLabel(acc.resetAt, acc.usageDuration);
+                const isUsed = acc.status === "used";
+                const isSelected = deleteMode && selectedForDelete.has(id);
+                return (
+                  <div
+                    key={id}
+                    className="rounded-xl p-3 transition-all"
+                    style={{
+                      background: isSelected ? "rgba(239, 68, 68, 0.08)" : "var(--surface)",
+                      border: `1px solid ${isSelected ? "var(--danger)" : "var(--border-subtle)"}`,
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex-shrink-0">
+                        <AccountCheckbox checked={isSelected || (!deleteMode && isUsed)} onToggle={() => deleteMode ? toggleSelect(id) : handleToggle(id)} deleteMode={deleteMode} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>#{idx + 1}</span>
+                          <span className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{acc.name}</span>
+                        </div>
+                        <div className="text-xs truncate mt-0.5" style={{ color: "var(--text-secondary)" }}>{acc.email}</div>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <StatusBadge label={label} countdown={countdown} />
+                          {acc.resetAt && <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{new Date(acc.resetAt).toLocaleDateString()}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
 
         {/* Toast */}
         {toast && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-xl px-5 py-3 shadow-2xl text-sm font-medium z-50 flex items-center gap-2" style={{
+          <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 rounded-xl px-5 py-3 shadow-2xl text-sm font-medium z-50 flex items-center gap-2 max-w-[90vw]" style={{
             background: toast.type === "success" ? "var(--accent)" : toast.type === "info" ? "#3b82f6" : "var(--danger)",
             color: "white",
           }}>
-            {toast.type === "success" && <CheckCircle className="w-4 h-4" />}
-            {toast.type === "info" && <Info className="w-4 h-4" />}
-            {toast.type === "error" && <AlertCircle className="w-4 h-4" />}
-            <span>{toast.title}</span>
+            {toast.type === "success" && <CheckCircle className="w-4 h-4 flex-shrink-0" />}
+            {toast.type === "info" && <Info className="w-4 h-4 flex-shrink-0" />}
+            {toast.type === "error" && <AlertCircle className="w-4 h-4 flex-shrink-0" />}
+            <span className="truncate">{toast.title}</span>
           </div>
         )}
       </div>
