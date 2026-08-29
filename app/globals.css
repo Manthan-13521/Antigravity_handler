@@ -1,48 +1,88 @@
 @import "tailwindcss";
 
-/* Antigravity Account Manager - Custom Styles */
+/* Antigravity Dark Theme */
 :root {
-  --bg: #0a0a0a;
-  --surface: #141414;
-  --surface-elevated: #1a1a1a;
-  --border: #2a2a2a;
-  --text-primary: #fafafa;
-  --text-secondary: #a3a3a3;
-  --text-muted: #737373;
+  --bg: #050505;
+  --bg-gradient: #0a0a0f;
+  --surface: #0d0d12;
+  --surface-elevated: #131318;
+  --surface-hover: #1a1a20;
+  --border: #1e1e25;
+  --border-subtle: #16161c;
+  --text-primary: #f0f0f5;
+  --text-secondary: #8888a0;
+  --text-muted: #555566;
   --accent: #22c55e;
-  --warning: #f59e0b;
+  --accent-dim: #16a34a;
+  --accent-glow: rgba(34, 197, 94, 0.15);
+  --warning: #eab308;
   --danger: #ef4444;
   --focus: #3b82f6;
 }
 
-/* Custom scrollbar */
+html {
+  background: var(--bg);
+}
+
+body {
+  background: linear-gradient(180deg, var(--bg-gradient) 0%, var(--bg) 100%);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--surface);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 4px;
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
 
-/* Focus ring */
+/* Focus */
 *:focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0ms !important;
     transition-duration: 0ms !important;
   }
+}
+
+/* Table row hover glow */
+.table-row:hover {
+  background: var(--surface-hover) !important;
+}
+
+/* Green glow effect for available accounts */
+.glow-green {
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.08);
+}
+
+/* Status badge animations */
+@keyframes pulse-green {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.3); }
+  50% { box-shadow: 0 0 8px 2px rgba(34, 197, 94, 0.15); }
+}
+
+.status-available {
+  animation: pulse-green 3s ease-in-out infinite;
+}
+
+/* Checkbox glow */
+.checkbox-checked {
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
 }
