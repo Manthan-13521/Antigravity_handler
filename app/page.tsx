@@ -7,18 +7,24 @@ import { getAccounts, saveStorage, getGlobalDuration, setGlobalDuration, addAcco
 import { getCountdownText, getStatusLabel, getSortOrder, getRecommendedSortOrder, checkExpiration } from "./lib/account-manager/expiration";
 import { DEFAULT_GLOBAL_DURATION, DURATION_LABELS, Account } from "./lib/account-manager/types";
 
-function AccountRow({ id, isUsed, onToggle }: { id: string; isUsed: boolean; onToggle: () => void }) {
+function AccountCheckbox({ isUsed, onToggle }: { isUsed: boolean; onToggle: () => void }) {
   return (
     <button
       type="button"
       onClick={onToggle}
       className={`
-        w-8 h-8 rounded-full flex items-center justify-center ${isUsed ? "bg-green-600 text-white" : "bg-gray-700 border border-gray-600 text-gray-400 hover:bg-gray-800 transition-colors"}
+        w-7 h-7 rounded-md flex items-center justify-center transition-all duration-200
+        ${isUsed
+          ? "bg-green-600 border-2 border-green-500 text-white shadow-md shadow-green-600/30"
+          : "bg-gray-700 border-2 border-gray-500 text-transparent hover:border-green-500 hover:bg-gray-600"
+        }
       `}
     >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-        <path d="M18 6L9 17L3 6" />
-      </svg>
+      {isUsed && (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      )}
     </button>
   );
 }
@@ -49,6 +55,8 @@ export default function Page() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ name: "", email: "", notes: "", duration: globalDuration });
   const [toast, setToast] = useState<{ type: "success" | "info" | "error"; title: string; description: string } | null>(null);
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
 
   // Load from localStorage
   useEffect(() => {
@@ -245,6 +253,39 @@ export default function Page() {
       description: "The account has been removed from your tracker",
     });
   }, []);
+
+  // Toggle delete mode
+  const toggleDeleteMode = useCallback(() => {
+    setDeleteMode((prev) => !prev);
+    setSelectedForDelete(new Set());
+  }, []);
+
+  // Toggle selection for delete
+  const toggleSelectForDelete = useCallback((id: string) => {
+    setSelectedForDelete((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  // Delete selected accounts
+  const handleDeleteSelected = useCallback(() => {
+    const count = selectedForDelete.size;
+    if (count === 0) return;
+    setAccounts((prev) => prev.filter((a: any) => !selectedForDelete.has(a.id)));
+    setDeleteMode(false);
+    setSelectedForDelete(new Set());
+    setToast({
+      type: "info",
+      title: `${count} account${count > 1 ? "s" : ""} deleted`,
+      description: "Selected accounts have been removed from your tracker",
+    });
+  }, [selectedForDelete]);
 
   // Reset all
   const handleDeleteAll = useCallback(() => {
@@ -458,7 +499,7 @@ export default function Page() {
         </div>
 
         {/* Add Account Button */}
-        <div className="mb-6">
+        <div className="mb-6 flex items-center gap-3">
           <button
             onClick={openAccountModal}
             className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors shadow-lg shadow-green-600/20"
@@ -466,8 +507,28 @@ export default function Page() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path d="M12 5v14M5 12h14" />
             </svg>
-            ⚡ USE NEXT ACCOUNT
+            + Add Account
           </button>
+          <button
+            onClick={toggleDeleteMode}
+            className={`inline-flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-medium transition-colors shadow-lg ${
+              deleteMode
+                ? "bg-red-600 text-white hover:bg-red-700 shadow-red-600/20"
+                : "bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600"
+            }`}
+          >
+            <Trash className="w-4 h-4" />
+            {deleteMode ? `Cancel (${selectedForDelete.size} selected)` : "Delete Accounts"}
+          </button>
+          {deleteMode && selectedForDelete.size > 0 && (
+            <button
+              onClick={handleDeleteSelected}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors shadow-lg shadow-red-600/20"
+            >
+              <Trash className="w-4 h-4" />
+              Delete {selectedForDelete.size} Account{selectedForDelete.size > 1 ? "s" : ""}
+            </button>
+          )}
         </div>
 
         {/* Account Modal */}
@@ -574,12 +635,12 @@ export default function Page() {
             <table className="w-full min-w-[600px]">
               <thead>
                 <tr className="border-b border-gray-700 bg-gray-800">
-                  <th className="p-3 text-left text-xs font-medium text-gray-400">#</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-400">ACCOUNT</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-400">EMAIL</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-400">STATUS</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-400">RESET</th>
-                  <th className="p-3 text-right text-xs font-medium text-gray-400">ACTION</th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-400 w-12">#</th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-400">ACCOUNT</th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-400">EMAIL</th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-400">STATUS</th>
+                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-400">RESET</th>
+                  <th className="px-4 py-4 text-right text-xs font-medium text-gray-400 w-16">{deleteMode ? "SELECT" : "USE"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -601,38 +662,35 @@ export default function Page() {
                   return (
                     <tr
                       key={id}
-                      className={`${rowBg} transition-colors duration-200`}
+                      className={`${rowBg} transition-colors duration-200 ${deleteMode && selectedForDelete.has(id) ? "ring-2 ring-red-500/50 bg-red-900/20" : ""}`}
                     >
-                      <td className="p-3 text-right text-xs text-gray-500">{idx + 1}</td>
-                      <td className="p-3 flex items-center gap-2">
-                        <span className="text-white font-medium truncate w-24">{acc.name}</span>
+                      <td className="px-4 py-4 text-right text-sm text-gray-500 w-12">{idx + 1}</td>
+                      <td className="px-4 py-4 flex items-center gap-3">
+                        <span className="text-white font-medium text-base truncate max-w-[180px]">{acc.name}</span>
                       </td>
-                      <td className="p-3 text-sm text-gray-400">{acc.email}</td>
-                      <td className="p-3">
+                      <td className="px-4 py-4 text-sm text-gray-400 truncate max-w-[240px]">{acc.email}</td>
+                      <td className="px-4 py-4">
                         <StatusBadge
                           label={label}
                           countdown={countdown}
                           lastUsed={lastUsed}
                         />
                       </td>
-                      <td className="p-3 text-sm text-gray-400">
+                      <td className="px-4 py-4 text-sm text-gray-400">
                         {acc.resetAt ? new Date(acc.resetAt).toLocaleString() : "—"}
                       </td>
-                      <td className="p-3 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <AccountRow
-                            id={acc.id}
+                      <td className="px-4 py-4 text-right">
+                        {deleteMode ? (
+                          <AccountCheckbox
+                            isUsed={selectedForDelete.has(id)}
+                            onToggle={() => toggleSelectForDelete(id)}
+                          />
+                        ) : (
+                          <AccountCheckbox
                             isUsed={isUsed}
                             onToggle={() => handleToggle(acc.id)}
                           />
-                          <button
-                            onClick={() => handleDelete(acc.id)}
-                            className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-700 border border-gray-600 text-red-400 hover:bg-red-600/20 hover:text-red-300 transition-colors"
-                            title="Delete account"
-                          >
-                            <Trash className="w-4 h-4" />
-                          </button>
-                        </div>
+                        )}
                       </td>
                     </tr>
                   );
