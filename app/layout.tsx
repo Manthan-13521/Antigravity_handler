@@ -1,3 +1,5 @@
+import "./globals.css";
+
 export const metadata = {
   title: "Antigravity Account Manager",
   description: "Personal account rotation and usage tracker",
