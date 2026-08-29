@@ -253,11 +253,18 @@ const SEED_ACCOUNTS: { name: string; email: string }[] = [
   { name: "Antigravity _2", email: "antigravity7252@gmail.com" },
 ];
 
+const SEED_FLAG_KEY = "antigravity_seeded_v1";
+
 export const seedAccountsIfEmpty = (): boolean => {
+  if (typeof window !== "undefined" && localStorage.getItem(SEED_FLAG_KEY) === "1") return false;
+
   const storage = loadStorage();
   const existingEmails = new Set(storage.accounts.map((a) => a.email.toLowerCase()));
   const toAdd = SEED_ACCOUNTS.filter((s) => !existingEmails.has(s.email.toLowerCase()));
-  if (toAdd.length === 0) return false;
+  if (toAdd.length === 0) {
+    if (typeof window !== "undefined") localStorage.setItem(SEED_FLAG_KEY, "1");
+    return false;
+  }
 
   const now = Date.now();
   const newAccounts: Account[] = toAdd.map((seed, i) => ({
@@ -275,6 +282,7 @@ export const seedAccountsIfEmpty = (): boolean => {
 
   storage.accounts.push(...newAccounts);
   saveStorage(storage);
+  if (typeof window !== "undefined") localStorage.setItem(SEED_FLAG_KEY, "1");
   return true;
 };
 
