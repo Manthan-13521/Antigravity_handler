@@ -231,7 +231,7 @@ const SEED_ACCOUNTS: { name: string; email: string }[] = [
   { name: "MANTHAN JAISWAL", email: "24951a05c3@iare.ac.in" },
   { name: "Antigraviy Q", email: "qantigraviy@gmail.com" },
   { name: "Manthan Jaiswal", email: "m98651766@gmail.com" },
-  { name: "Anti gravity 01", email: "antigravity6250@gmail.com" },
+  { name: "Antigravity 01", email: "antigravity6250@gmail.com" },
   { name: "Antigravity 02", email: "antigravity6251@gmail.com" },
   { name: "Antigravity 03", email: "antigravity6252@gmail.com" },
   { name: "Antigravity 04", email: "antigravity6253@gmail.com" },
