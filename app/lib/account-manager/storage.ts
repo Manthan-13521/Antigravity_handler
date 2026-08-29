@@ -259,15 +259,13 @@ export const seedAccountsIfEmpty = (): boolean => {
   if (typeof window !== "undefined" && localStorage.getItem(SEED_FLAG_KEY) === "1") return false;
 
   const storage = loadStorage();
-  const existingEmails = new Set(storage.accounts.map((a) => a.email.toLowerCase()));
-  const toAdd = SEED_ACCOUNTS.filter((s) => !existingEmails.has(s.email.toLowerCase()));
-  if (toAdd.length === 0) {
+  if (storage.accounts.length > 0) {
     if (typeof window !== "undefined") localStorage.setItem(SEED_FLAG_KEY, "1");
     return false;
   }
 
   const now = Date.now();
-  const newAccounts: Account[] = toAdd.map((seed, i) => ({
+  const newAccounts: Account[] = SEED_ACCOUNTS.map((seed, i) => ({
     id: crypto.randomUUID(),
     name: seed.name,
     email: seed.email,
@@ -276,11 +274,11 @@ export const seedAccountsIfEmpty = (): boolean => {
     usedAt: null,
     resetAt: null,
     usageDuration: SEVEN_DAYS,
-    createdAt: now - (toAdd.length - i) * 60000,
-    updatedAt: now - (toAdd.length - i) * 60000,
+    createdAt: now - (SEED_ACCOUNTS.length - i) * 60000,
+    updatedAt: now - (SEED_ACCOUNTS.length - i) * 60000,
   }));
 
-  storage.accounts.push(...newAccounts);
+  storage.accounts = newAccounts;
   saveStorage(storage);
   if (typeof window !== "undefined") localStorage.setItem(SEED_FLAG_KEY, "1");
   return true;
