@@ -256,13 +256,8 @@ const SEED_ACCOUNTS: { name: string; email: string }[] = [
 const SEED_FLAG_KEY = "antigravity_seeded_v1";
 
 export const seedAccountsIfEmpty = (): boolean => {
-  if (typeof window !== "undefined" && localStorage.getItem(SEED_FLAG_KEY) === "1") return false;
-
   const storage = loadStorage();
-  if (storage.accounts.length > 0) {
-    if (typeof window !== "undefined") localStorage.setItem(SEED_FLAG_KEY, "1");
-    return false;
-  }
+  if (storage.accounts.length > 0) return false;
 
   const now = Date.now();
   const newAccounts: Account[] = SEED_ACCOUNTS.map((seed, i) => ({
@@ -280,7 +275,6 @@ export const seedAccountsIfEmpty = (): boolean => {
 
   storage.accounts = newAccounts;
   saveStorage(storage);
-  if (typeof window !== "undefined") localStorage.setItem(SEED_FLAG_KEY, "1");
   return true;
 };
 
