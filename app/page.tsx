@@ -416,7 +416,7 @@ export default function Page() {
                 <div className="space-y-4">
                   <div>
                     <label className="text-[10px] sm:text-xs font-medium mb-1.5 block uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Name</label>
-                    <input type="text" name="name" value={formData.name} onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Antigravity 16" className="w-full rounded-lg px-3 py-3 sm:py-2.5 text-sm focus:outline-none" style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)", minHeight: "44px" }} required autoFocus />
+                    <input type="text" name="name" value={formData.name} onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))} placeholder="antigravity" className="w-full rounded-lg px-3 py-3 sm:py-2.5 text-sm focus:outline-none" style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)", minHeight: "44px" }} required autoFocus />
                   </div>
                   <div>
                     <label className="text-[10px] sm:text-xs font-medium mb-1.5 block uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Email</label>
@@ -428,9 +428,14 @@ export default function Page() {
                   </div>
                   <div>
                     <label className="text-[10px] sm:text-xs font-medium mb-1.5 block uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Duration</label>
-                    <select value={formData.duration} onChange={(e) => setFormData((p) => ({ ...p, duration: parseInt(e.target.value, 10) }))} className="w-full rounded-lg px-3 py-3 sm:py-2.5 text-sm focus:outline-none appearance-none" style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)", minHeight: "44px" }}>
-                      {DURATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
+                    <div className="flex gap-2">
+                      <label className="flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors cursor-pointer" style={{ background: formData.duration === 7 ? "var(--accent)" : "var(--surface-elevated)", color: formData.duration === 7 ? "white" : "var(--text-secondary)", border: `1px solid ${formData.duration === 7 ? "var(--accent)" : "var(--border)"}` }}>
+                        <input type="radio" name="duration" value={7} checked={formData.duration === 7} className="hidden" onChange={() => setFormData((p) => ({ ...p, duration: 7 }))} />7 Days
+                      </label>
+                      <label className="flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors cursor-pointer" style={{ background: formData.duration === 30 ? "var(--accent)" : "var(--surface-elevated)", color: formData.duration === 30 ? "white" : "var(--text-secondary)", border: `1px solid ${formData.duration === 30 ? "var(--accent)" : "var(--border)"}` }}>
+                        <input type="radio" name="duration" value={30} checked={formData.duration === 30} className="hidden" onChange={() => setFormData((p) => ({ ...p, duration: 30 }))} />1 Month
+                      </label>
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-3 mt-6">
