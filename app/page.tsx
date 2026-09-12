@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Trash, Flag, Search, AlertCircle, CheckCircle, Info, Zap, Menu, X, Pencil, Plus } from "lucide-react";
 
-import { getAccounts, saveStorage, getGlobalDuration, setGlobalDuration, addAccount, deleteAccount, importData, exportData, reconcileExpiration, seedAccountsIfEmpty, getColumns, getColumnState, toggleAccountColumn, addTrackerColumn, renameTrackerColumn, setTrackerColumnDuration, deleteTrackerColumn } from "./lib/account-manager/storage";
+import { getAccounts, saveStorage, getGlobalDuration, setGlobalDuration, addAccount, deleteAccount, importData, exportData, reconcileExpiration, seedAccountsIfEmpty, getColumns, getColumnState, toggleAccountColumn, addTrackerColumn, renameTrackerColumn, setTrackerColumnDuration, deleteTrackerColumn, syncMissingSeeds } from "./lib/account-manager/storage";
 import { getCountdownText, getStatusLabel, getSortOrder, getRecommendedSortOrder, checkExpiration } from "./lib/account-manager/expiration";
 import { DEFAULT_GLOBAL_DURATION, Account, TrackerColumn } from "./lib/account-manager/types";
 
@@ -262,8 +262,18 @@ export default function Page() {
     showToast("info", `${count} account${count > 1 ? "s" : ""} deleted`, "Removed from your tracker");
   }, [selectedForDelete, showToast]);
 
-  const handleExport = useCallback(() => {
-    const data = exportData();
+  const handleSyncSeeds = useCallback(() => {
+    const added = syncMissingSeeds();
+    setAccounts(getAccounts());
+    setColumns(getColumns());
+    if (added > 0) {
+      showToast("success", "Seeds synced", `${added} missing account${added > 1 ? "s" : ""} added`);
+    } else {
+      showToast("info", "Already up to date", "No missing seed accounts");
+    }
+  }, [showToast]);
+
+  const handleExport = useCallback(() => {    const data = exportData();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -466,6 +476,7 @@ export default function Page() {
             </button>
           )}
           <div className="sm:ml-auto flex gap-2">
+            <button onClick={handleSyncSeeds} className="flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-lg text-xs font-medium transition-colors" style={{ background: "var(--surface-elevated)", color: "var(--text-secondary)", border: "1px solid var(--border)", minHeight: "44px" }}>Sync seeds</button>
             <button onClick={handleExport} className="flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-lg text-xs font-medium transition-colors" style={{ background: "var(--surface-elevated)", color: "var(--text-secondary)", border: "1px solid var(--border)", minHeight: "44px" }}>Export</button>
             <label className="flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer text-center" style={{ background: "var(--surface-elevated)", color: "var(--text-secondary)", border: "1px solid var(--border)", minHeight: "44px", display: "flex", alignItems: "center", justifyContent: "center" }}>
               Import

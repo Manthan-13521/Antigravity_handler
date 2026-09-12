@@ -462,6 +462,39 @@ export const clearAllData = (): boolean => {
   }
 };
 
+/** Adds any seed accounts whose email isn't already stored. Never modifies or removes existing accounts. */
+export const syncMissingSeeds = (): number => {
+  const storage = loadStorage();
+  const existingEmails = new Set(storage.accounts.map((a) => a.email.toLowerCase()));
+  const now = Date.now();
+  let added = 0;
+  for (const seed of SEED_ACCOUNTS) {
+    if (existingEmails.has(seed.email.toLowerCase())) continue;
+    const uses: Record<string, TrackerState> = {};
+    for (const col of storage.columns) {
+      uses[col.id] = { status: "available", usedAt: null, resetAt: null, usageDuration: col.duration };
+    }
+    const primary = storage.columns[0];
+    storage.accounts.push({
+      id: crypto.randomUUID(),
+      name: seed.name,
+      email: seed.email,
+      notes: "",
+      status: "available",
+      usedAt: null,
+      resetAt: null,
+      usageDuration: primary?.duration ?? SEVEN_DAYS,
+      uses,
+      createdAt: now,
+      updatedAt: now,
+    });
+    existingEmails.add(seed.email.toLowerCase());
+    added++;
+  }
+  if (added > 0) saveStorage(storage);
+  return added;
+};
+
 const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 
 const SEED_ACCOUNTS: { name: string; email: string }[] = [
