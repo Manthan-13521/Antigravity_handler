@@ -1,5 +1,18 @@
 export type AccountStatus = "available" | "used";
 
+export interface TrackerState {
+  status: AccountStatus;
+  usedAt: number | null;
+  resetAt: number | null;
+  usageDuration: number;
+}
+
+export interface TrackerColumn {
+  id: string;
+  name: string;
+  duration: number;
+}
+
 export interface Account {
   id: string;
   name: string;
@@ -12,6 +25,9 @@ export interface Account {
   resetAt: number | null;
 
   usageDuration: number;
+
+  /** Per-column checkbox state, keyed by TrackerColumn id. Mirrors legacy fields for the first column. */
+  uses?: Record<string, TrackerState>;
 
   createdAt: number;
   updatedAt: number;

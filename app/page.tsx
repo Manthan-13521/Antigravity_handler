@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Trash, Flag, Search, AlertCircle, CheckCircle, Info, Zap, Menu, X } from "lucide-react";
+import { Trash, Flag, Search, AlertCircle, CheckCircle, Info, Zap, Menu, X, Pencil, Plus } from "lucide-react";
 
-import { getAccounts, saveStorage, getGlobalDuration, setGlobalDuration, addAccount, deleteAccount, importData, exportData, reconcileExpiration, seedAccountsIfEmpty } from "./lib/account-manager/storage";
+import { getAccounts, saveStorage, getGlobalDuration, setGlobalDuration, addAccount, deleteAccount, importData, exportData, reconcileExpiration, seedAccountsIfEmpty, getColumns, getColumnState, toggleAccountColumn, addTrackerColumn, renameTrackerColumn, setTrackerColumnDuration, deleteTrackerColumn } from "./lib/account-manager/storage";
 import { getCountdownText, getStatusLabel, getSortOrder, getRecommendedSortOrder, checkExpiration } from "./lib/account-manager/expiration";
-import { DEFAULT_GLOBAL_DURATION, Account } from "./lib/account-manager/types";
+import { DEFAULT_GLOBAL_DURATION, Account, TrackerColumn } from "./lib/account-manager/types";
 
 const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const TODAY = new Date();
@@ -60,6 +60,15 @@ const DURATION_OPTIONS = [
   { value: 30, label: "1 Month" },
 ];
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const COLUMN_DURATION_OPTIONS = [1, 2, 3, 7, 15, 30].map((d) => ({ days: d, ms: d * DAY_MS, label: d === 30 ? "1 Month" : `${d} Day${d > 1 ? "s" : ""}` }));
+
+function columnDurationLabel(ms: number): string {
+  const opt = COLUMN_DURATION_OPTIONS.find((o) => o.ms === ms);
+  if (opt) return opt.label;
+  return formatMs(ms);
+}
+
 function formatMs(ms: number): string {
   const d = Math.floor(ms / 86400000);
   const h = Math.floor((ms % 86400000) / 3600000);
@@ -80,6 +89,13 @@ export default function Page() {
   const [deleteMode, setDeleteMode] = useState(false);
   const [selectedForDelete, setSelectedForDelete] = useState<Set<string>>(new Set());
   const [showSearch, setShowSearch] = useState(false);
+  const [columns, setColumns] = useState<TrackerColumn[]>([]);
+  const [editingColId, setEditingColId] = useState<string | null>(null);
+  const [editColName, setEditColName] = useState("");
+  const [editColDuration, setEditColDuration] = useState<number>(7 * DAY_MS);
+  const [isAddingColumn, setIsAddingColumn] = useState(false);
+  const [newColName, setNewColName] = useState("");
+  const [newColDuration, setNewColDuration] = useState<number>(7 * DAY_MS);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -88,16 +104,17 @@ export default function Page() {
     seedAccountsIfEmpty();
     setAccounts(getAccounts());
     setGlobalDur(getGlobalDuration());
+    setColumns(getColumns());
   }, []);
 
   useEffect(() => {
     if (accounts.length === 0 && !isModalOpen) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      saveStorage({ accounts, globalDuration });
+      saveStorage({ accounts, globalDuration, columns });
     }, 300);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [accounts, globalDuration, isModalOpen]);
+  }, [accounts, globalDuration, columns, isModalOpen]);
 
   useEffect(() => { checkExpiration(); }, []);
 
@@ -174,18 +191,67 @@ export default function Page() {
   }, [showToast]);
 
   const handleToggle = useCallback((id: string) => {
+    const first = columns[0];
+    if (!first) return;
+    handleToggleColumn(id, first.id);
+  }, [columns]);
+
+  const handleToggleColumn = useCallback((id: string, columnId: string) => {
     const acc = accountMap.get(id);
-    if (!acc) return;
-    if (acc.status === "available") {
-      const dur = acc.usageDuration ?? globalDuration;
-      const now = Date.now();
-      setAccounts((p) => p.map((a) => a.id === id ? { ...a, status: "used", usedAt: now, resetAt: now + dur, usageDuration: dur } : a));
-      showToast("success", "Account used", `"${acc.name}" resets in ${formatMs(dur)}`);
+    const col = columns.find((c) => c.id === columnId);
+    if (!acc || !col) return;
+    const before = getColumnState(acc, columnId, col.duration);
+    toggleAccountColumn(id, columnId);
+    setAccounts(getAccounts());
+    setColumns(getColumns());
+    if (before.status === "available") {
+      showToast("success", `${col.name} used`, `"${acc.name}" resets in ${formatMs(col.duration)}`);
     } else {
-      setAccounts((p) => p.map((a) => a.id === id ? { ...a, status: "available", usedAt: null, resetAt: null } : a));
-      showToast("success", "Account available", `"${acc.name}" is now available`);
+      showToast("success", `${col.name} available`, `"${acc.name}" is now available`);
     }
-  }, [accountMap, globalDuration, showToast]);
+  }, [accountMap, columns, showToast]);
+
+  const startEditColumn = useCallback((col: TrackerColumn) => {
+    setEditingColId(col.id);
+    setEditColName(col.name);
+    setEditColDuration(col.duration);
+    setIsAddingColumn(false);
+  }, []);
+
+  const saveEditColumn = useCallback(() => {
+    if (!editingColId) return;
+    const nameOk = editColName.trim() ? renameTrackerColumn(editingColId, editColName) : undefined;
+    // Allow duration-only change even if the name is unchanged/blank-submitted.
+    setTrackerColumnDuration(editingColId, editColDuration);
+    setColumns(getColumns());
+    setAccounts(getAccounts());
+    setEditingColId(null);
+    if (nameOk || editColName.trim()) showToast("success", "Column updated", `"${editColName.trim() || "column"}" · ${columnDurationLabel(editColDuration)}`);
+  }, [editingColId, editColName, editColDuration, showToast]);
+
+  const handleAddColumn = useCallback(() => {
+    const name = newColName.trim() || `COL ${columns.length + 1}`;
+    addTrackerColumn(name, newColDuration);
+    setColumns(getColumns());
+    setAccounts(getAccounts());
+    setNewColName("");
+    setNewColDuration(7 * DAY_MS);
+    setIsAddingColumn(false);
+    showToast("success", "Column added", `"${name}" · ${columnDurationLabel(newColDuration)}`);
+  }, [newColName, newColDuration, columns.length, showToast]);
+
+  const handleDeleteColumn = useCallback((columnId: string) => {
+    const col = columns.find((c) => c.id === columnId);
+    const ok = deleteTrackerColumn(columnId);
+    if (ok) {
+      setColumns(getColumns());
+      setAccounts(getAccounts());
+      if (editingColId === columnId) setEditingColId(null);
+      showToast("info", "Column deleted", col ? `"${col.name}" removed` : "Removed");
+    } else {
+      showToast("error", "Cannot delete", "At least one column must remain");
+    }
+  }, [columns, editingColId, showToast]);
 
   const handleDeleteSelected = useCallback(() => {
     const count = selectedForDelete.size;
@@ -215,6 +281,7 @@ export default function Page() {
       const result = importData(JSON.parse(e.target.result));
       if (result.success) {
         setAccounts(getAccounts());
+        setColumns(getColumns());
         showToast("success", "Import successful", `${result.imported} accounts imported`);
       } else {
         showToast("error", "Import failed", "Could not parse data");
@@ -407,6 +474,87 @@ export default function Page() {
           </div>
         </div>
 
+        {/* Mobile column manager */}
+        <div className="md:hidden mb-3 rounded-xl p-3" style={{ background: "var(--surface)", border: "1px solid var(--border-subtle)" }}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>Columns</span>
+            {!isAddingColumn && (
+              <button onClick={() => { setIsAddingColumn(true); setEditingColId(null); }} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium" style={{ background: "var(--surface-elevated)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
+                <Plus className="w-3 h-3" /> Add
+              </button>
+            )}
+          </div>
+          <div className="space-y-2">
+            {columns.map((col) => (
+              <div key={col.id}>
+                {editingColId === col.id ? (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={editColName}
+                      maxLength={24}
+                      onChange={(e) => setEditColName(e.target.value)}
+                      className="rounded px-2 py-1.5 text-xs w-full focus:outline-none"
+                      style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                      autoFocus
+                    />
+                    <select
+                      value={editColDuration}
+                      onChange={(e) => setEditColDuration(Number(e.target.value))}
+                      className="rounded px-1 py-1.5 text-xs focus:outline-none"
+                      style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                    >
+                      {COLUMN_DURATION_OPTIONS.map((o) => (
+                        <option key={o.ms} value={o.ms}>{o.label}</option>
+                      ))}
+                    </select>
+                    <button onClick={saveEditColumn} className="px-2 py-1.5 rounded text-xs font-medium" style={{ background: "var(--accent)", color: "white" }}>Save</button>
+                    <button onClick={() => setEditingColId(null)} className="px-2 py-1.5 rounded text-xs" style={{ background: "var(--surface-elevated)", color: "var(--text-muted)", border: "1px solid var(--border)" }}>Cancel</button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium flex-1 truncate" style={{ color: "var(--text-primary)" }}>{col.name} <span style={{ color: "var(--text-muted)" }}>· {columnDurationLabel(col.duration)}</span></span>
+                    <button onClick={() => startEditColumn(col)} className="p-1.5 rounded" style={{ color: "var(--text-muted)" }} title={`Rename ${col.name} / change timeframe`}>
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    {columns.length > 1 && (
+                      <button onClick={() => handleDeleteColumn(col.id)} className="p-1.5 rounded" style={{ color: "var(--text-muted)" }} title={`Delete ${col.name} column`}>
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+            {isAddingColumn && (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={newColName}
+                  maxLength={24}
+                  placeholder="Column name"
+                  onChange={(e) => setNewColName(e.target.value)}
+                  className="rounded px-2 py-1.5 text-xs w-full focus:outline-none"
+                  style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                  autoFocus
+                />
+                <select
+                  value={newColDuration}
+                  onChange={(e) => setNewColDuration(Number(e.target.value))}
+                  className="rounded px-1 py-1.5 text-xs focus:outline-none"
+                  style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                >
+                  {COLUMN_DURATION_OPTIONS.map((o) => (
+                    <option key={o.ms} value={o.ms}>{o.label}</option>
+                  ))}
+                </select>
+                <button onClick={handleAddColumn} className="px-2 py-1.5 rounded text-xs font-medium" style={{ background: "var(--accent)", color: "white" }}>Add</button>
+                <button onClick={() => setIsAddingColumn(false)} className="px-2 py-1.5 rounded text-xs" style={{ background: "var(--surface-elevated)", color: "var(--text-muted)", border: "1px solid var(--border)" }}>Cancel</button>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Modal */}
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }} onClick={() => setIsModalOpen(false)}>
@@ -469,7 +617,85 @@ export default function Page() {
                     <th className="px-4 py-3 text-left text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>Email</th>
                     <th className="px-4 py-3 text-left text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>Status</th>
                     <th className="px-4 py-3 text-left text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>Resets</th>
-                    <th className="px-4 py-3 text-right text-[10px] uppercase tracking-wider font-medium w-16" style={{ color: "var(--text-muted)" }}>{deleteMode ? "Select" : "Use"}</th>
+                    {deleteMode ? (
+                      <th className="px-4 py-3 text-right text-[10px] uppercase tracking-wider font-medium w-16" style={{ color: "var(--text-muted)" }}>Select</th>
+                    ) : (
+                      <>
+                        {columns.map((col) => (
+                          <th key={col.id} className="px-4 py-3 text-right text-[10px] uppercase tracking-wider font-medium" style={{ color: "var(--text-muted)" }}>
+                            {editingColId === col.id ? (
+                              <span className="flex items-center justify-end gap-1 normal-case" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="text"
+                                  value={editColName}
+                                  maxLength={24}
+                                  onChange={(e) => setEditColName(e.target.value)}
+                                  className="rounded px-1.5 py-1 text-[11px] w-20 focus:outline-none"
+                                  style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                                  autoFocus
+                                />
+                                <select
+                                  value={editColDuration}
+                                  onChange={(e) => setEditColDuration(Number(e.target.value))}
+                                  className="rounded px-1 py-1 text-[11px] focus:outline-none"
+                                  style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                                >
+                                  {COLUMN_DURATION_OPTIONS.map((o) => (
+                                    <option key={o.ms} value={o.ms}>{o.label}</option>
+                                  ))}
+                                </select>
+                                <button onClick={saveEditColumn} className="px-1.5 py-1 rounded text-[11px] font-medium" style={{ background: "var(--accent)", color: "white" }}>Save</button>
+                                <button onClick={() => setEditingColId(null)} className="px-1.5 py-1 rounded text-[11px]" style={{ background: "var(--surface-elevated)", color: "var(--text-muted)", border: "1px solid var(--border)" }}>Cancel</button>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center justify-end gap-1">
+                                <span title={`Resets in ${columnDurationLabel(col.duration)}`}>{col.name} · {columnDurationLabel(col.duration)}</span>
+                                <button onClick={() => startEditColumn(col)} title={`Rename ${col.name} / change timeframe`} className="p-1 rounded hover:opacity-80" style={{ color: "var(--text-muted)" }}>
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                {columns.length > 1 && (
+                                  <button onClick={() => handleDeleteColumn(col.id)} title={`Delete ${col.name} column`} className="p-1 rounded hover:opacity-80" style={{ color: "var(--text-muted)" }}>
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </span>
+                            )}
+                          </th>
+                        ))}
+                        <th className="px-2 py-3 text-right w-10">
+                          {isAddingColumn ? (
+                            <span className="flex items-center justify-end gap-1 normal-case" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="text"
+                                value={newColName}
+                                maxLength={24}
+                                placeholder="Name"
+                                onChange={(e) => setNewColName(e.target.value)}
+                                className="rounded px-1.5 py-1 text-[11px] w-20 focus:outline-none"
+                                style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                                autoFocus
+                              />
+                              <select
+                                value={newColDuration}
+                                onChange={(e) => setNewColDuration(Number(e.target.value))}
+                                className="rounded px-1 py-1 text-[11px] focus:outline-none"
+                                style={{ background: "var(--surface-elevated)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                              >
+                                {COLUMN_DURATION_OPTIONS.map((o) => (
+                                  <option key={o.ms} value={o.ms}>{o.label}</option>
+                                ))}
+                              </select>
+                              <button onClick={handleAddColumn} className="px-1.5 py-1 rounded text-[11px] font-medium" style={{ background: "var(--accent)", color: "white" }}>Add</button>
+                              <button onClick={() => setIsAddingColumn(false)} className="px-1.5 py-1 rounded text-[11px]" style={{ background: "var(--surface-elevated)", color: "var(--text-muted)", border: "1px solid var(--border)" }}>Cancel</button>
+                            </span>
+                          ) : (
+                            <button onClick={() => { setIsAddingColumn(true); setEditingColId(null); }} title="Add new checkbox column" className="p-1.5 rounded-lg transition-colors" style={{ background: "var(--surface-elevated)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -493,9 +719,27 @@ export default function Page() {
                         <td className="px-4 py-3 text-xs" style={{ color: "var(--text-secondary)" }}>{acc.email}</td>
                         <td className="px-4 py-3"><StatusBadge label={label} countdown={countdown} /></td>
                         <td className="px-4 py-3 text-xs" style={{ color: "var(--text-muted)" }}>{acc.resetAt ? new Date(acc.resetAt).toLocaleString() : "—"}</td>
-                        <td className="px-4 py-3 text-right">
-                          <AccountCheckbox checked={isSelected || (!deleteMode && isUsed)} onToggle={() => deleteMode ? toggleSelect(id) : handleToggle(id)} deleteMode={deleteMode} />
-                        </td>
+                        {deleteMode ? (
+                          <td className="px-4 py-3 text-right">
+                            <AccountCheckbox checked={isSelected} onToggle={() => toggleSelect(id)} deleteMode={deleteMode} />
+                          </td>
+                        ) : (
+                          <>
+                            {columns.map((col) => {
+                              const st = getColumnState(acc, col.id, col.duration);
+                              const checked = st.status === "used";
+                              const title = checked && st.resetAt
+                                ? `${col.name}: resets ${new Date(st.resetAt).toLocaleString()}`
+                                : `${col.name}: available · ${columnDurationLabel(col.duration)}`;
+                              return (
+                                <td key={col.id} className="px-4 py-3 text-right" title={title}>
+                                  <AccountCheckbox checked={checked} onToggle={() => handleToggleColumn(id, col.id)} deleteMode={false} />
+                                </td>
+                              );
+                            })}
+                            <td className="px-2 py-3" />
+                          </>
+                        )}
                       </tr>
                     );
                   })}
@@ -534,6 +778,39 @@ export default function Page() {
                           <StatusBadge label={label} countdown={countdown} />
                           {acc.resetAt && <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{new Date(acc.resetAt).toLocaleDateString()}</span>}
                         </div>
+                        {!deleteMode && columns.length > 1 && (
+                          <div className="flex items-center gap-3 mt-2 flex-wrap">
+                            {columns.map((col) => {
+                              const st = getColumnState(acc, col.id, col.duration);
+                              return (
+                                <button
+                                  key={col.id}
+                                  type="button"
+                                  onClick={() => handleToggleColumn(id, col.id)}
+                                  className="inline-flex items-center gap-1.5 text-[10px] font-medium"
+                                  style={{ color: st.status === "used" ? "var(--warning)" : "var(--text-muted)" }}
+                                  title={st.status === "used" && st.resetAt ? `${col.name}: resets ${new Date(st.resetAt).toLocaleString()}` : `${col.name}: ${columnDurationLabel(col.duration)}`}
+                                >
+                                  <span
+                                    className="w-4 h-4 rounded flex items-center justify-center"
+                                    style={{
+                                      background: st.status === "used" ? "var(--accent)" : "transparent",
+                                      border: `2px solid ${st.status === "used" ? "var(--accent)" : "var(--border)"}`,
+                                      color: st.status === "used" ? "white" : "transparent",
+                                    }}
+                                  >
+                                    {st.status === "used" && (
+                                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                                        <polyline points="20 6 9 17 4 12" />
+                                      </svg>
+                                    )}
+                                  </span>
+                                  {col.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

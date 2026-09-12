@@ -133,17 +133,29 @@ export const checkExpiration = (): { expiredCount: number; justSwitched: Account
   const storage = loadStorage();
   const now = Date.now();
   const accounts = storage.accounts.map((acc: Account) => {
+    const uses = { ...(acc.uses ?? {}) };
+    for (const col of storage.columns) {
+      const s = uses[col.id];
+      if (s && s.status === "used" && s.resetAt !== null && now >= s.resetAt) {
+        uses[col.id] = { status: "available", usedAt: null, resetAt: null, usageDuration: col.duration };
+      }
+    }
+    const primary = storage.columns[0];
+    const ps = primary ? uses[primary.id] : undefined;
     let status = acc.status;
     let usedAt = acc.usedAt;
     let resetAt = acc.resetAt;
-
-    if (status === "used" && resetAt !== null && now >= resetAt) {
+    if (ps) {
+      status = ps.status;
+      usedAt = ps.usedAt;
+      resetAt = ps.resetAt;
+    } else if (status === "used" && resetAt !== null && now >= resetAt) {
       status = "available";
       usedAt = null;
       resetAt = null;
     }
 
-    return { ...acc, status, usedAt, resetAt } as Account;
+    return { ...acc, status, usedAt, resetAt, uses } as Account;
   });
 
   const expiredCount = accounts.filter(
@@ -155,19 +167,21 @@ export const checkExpiration = (): { expiredCount: number; justSwitched: Account
     return prev && prev.status === "used" && acc.status === "available";
   });
 
-  // Save reconciled data
-  const reconciled = accounts.filter(
-    (acc, i) => acc.status !== storage.accounts[i].status || acc.usedAt !== storage.accounts[i].usedAt || acc.resetAt !== storage.accounts[i].resetAt
-  );
+  // Save reconciled data (compare by id, persist full per-column state)
+  const changed = accounts.filter((acc) => {
+    const prev = storage.accounts.find((a) => a.id === acc.id);
+    if (!prev) return true;
+    if (acc.status !== prev.status || acc.usedAt !== prev.usedAt || acc.resetAt !== prev.resetAt) return true;
+    for (const col of storage.columns) {
+      const a = acc.uses?.[col.id];
+      const b = prev.uses?.[col.id];
+      if ((a?.status ?? null) !== (b?.status ?? null) || (a?.resetAt ?? null) !== (b?.resetAt ?? null) || (a?.usedAt ?? null) !== (b?.usedAt ?? null)) return true;
+    }
+    return false;
+  });
 
-  if (reconciled.length > 0) {
-    const finalAccounts = reconciled.map((acc, i) => ({
-      ...storage.accounts[i],
-      status: acc.status,
-      usedAt: acc.usedAt,
-      resetAt: acc.resetAt,
-    }));
-    storage.accounts = finalAccounts;
+  if (changed.length > 0) {
+    storage.accounts = accounts;
     saveStorage(storage);
   }
 

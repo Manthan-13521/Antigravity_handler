@@ -1,48 +1,135 @@
-import { Account, AccountStatus, DEFAULT_GLOBAL_DURATION, DURATION_LABELS } from "./types";
+import { Account, AccountStatus, TrackerColumn, TrackerState, DEFAULT_GLOBAL_DURATION, DURATION_LABELS } from "./types";
 
 const STORAGE_KEY = "antigravity_accounts_v1";
 
-export const loadStorage = (): { accounts: Account[]; globalDuration: number } => {
+export const DEFAULT_COLUMN_ID = "use";
+
+export interface StorageData {
+  accounts: Account[];
+  globalDuration: number;
+  columns: TrackerColumn[];
+}
+
+const makeDefaultColumns = (duration: number): TrackerColumn[] => [
+  { id: DEFAULT_COLUMN_ID, name: "USE", duration },
+];
+
+const sanitizeColumns = (raw: any, fallbackDuration: number): TrackerColumn[] => {
+  if (!Array.isArray(raw) || raw.length === 0) return makeDefaultColumns(fallbackDuration);
+  const seen = new Set<string>();
+  const cols: TrackerColumn[] = [];
+  for (const c of raw) {
+    const id = typeof c?.id === "string" && c.id ? c.id : crypto.randomUUID();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const name = typeof c?.name === "string" && c.name.trim() ? c.name.trim().slice(0, 24) : "USE";
+    const duration = typeof c?.duration === "number" && c.duration > 0 ? c.duration : fallbackDuration;
+    cols.push({ id, name, duration });
+  }
+  return cols.length > 0 ? cols : makeDefaultColumns(fallbackDuration);
+};
+
+const ensureUses = (acc: any, columns: TrackerColumn[], fallbackDuration: number): Record<string, TrackerState> => {
+  const uses: Record<string, TrackerState> = { ...(acc.uses ?? {}) };
+  for (const col of columns) {
+    const existing = uses[col.id];
+    if (existing && (existing.status === "available" || existing.status === "used")) {
+      uses[col.id] = {
+        status: existing.status,
+        usedAt: existing.usedAt ?? null,
+        resetAt: existing.resetAt ?? null,
+        usageDuration: existing.usageDuration ?? col.duration,
+      };
+    } else if (col.id === DEFAULT_COLUMN_ID || columns[0]?.id === col.id) {
+      // Mirror legacy fields onto the primary column for migrated accounts.
+      uses[col.id] = {
+        status: acc.status === "used" ? "used" : "available",
+        usedAt: acc.usedAt ?? null,
+        resetAt: acc.resetAt ?? null,
+        usageDuration: acc.usageDuration ?? col.duration ?? fallbackDuration,
+      };
+    } else {
+      uses[col.id] = { status: "available", usedAt: null, resetAt: null, usageDuration: col.duration };
+    }
+  }
+  // Drop states for deleted columns.
+  for (const key of Object.keys(uses)) {
+    if (!columns.some((c) => c.id === key)) delete uses[key];
+  }
+  return uses;
+};
+
+export const loadStorage = (): StorageData => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      const initial: { accounts: Account[]; globalDuration: number } = {
+      const initial: StorageData = {
         accounts: [],
         globalDuration: DEFAULT_GLOBAL_DURATION,
+        columns: makeDefaultColumns(DEFAULT_GLOBAL_DURATION),
       };
       saveStorage(initial);
       return initial;
     }
     const parsed = JSON.parse(raw) as any;
     if (parsed.version === undefined) parsed.version = 1;
-    parsed.accounts = parsed.accounts.map((acc: any) => ({
-      id: acc.id || crypto.randomUUID(),
-      name: acc.name || `Account ${parsed.accounts.length + 1}`,
-      email: acc.email || "",
-      notes: acc.notes,
-      status: acc.status || "available",
-      usedAt: acc.usedAt ?? null,
-      resetAt: acc.resetAt ?? null,
-      usageDuration: acc.usageDuration ?? DEFAULT_GLOBAL_DURATION,
-      createdAt: acc.createdAt ?? Date.now(),
-      updatedAt: acc.updatedAt ?? Date.now(),
-    }));
-    parsed.globalDuration = parsed.globalDuration ?? DEFAULT_GLOBAL_DURATION;
-    return parsed as { accounts: Account[]; globalDuration: number };
+    const globalDuration = parsed.globalDuration ?? DEFAULT_GLOBAL_DURATION;
+    const columns = sanitizeColumns(parsed.columns, globalDuration);
+    const accounts: Account[] = (Array.isArray(parsed.accounts) ? parsed.accounts : []).map((acc: any) => {
+      const base = {
+        id: acc.id || crypto.randomUUID(),
+        name: acc.name || `Account`,
+        email: acc.email || "",
+        notes: acc.notes,
+        status: acc.status === "used" ? "used" as AccountStatus : "available" as AccountStatus,
+        usedAt: acc.usedAt ?? null,
+        resetAt: acc.resetAt ?? null,
+        usageDuration: acc.usageDuration ?? globalDuration,
+        createdAt: acc.createdAt ?? Date.now(),
+        updatedAt: acc.updatedAt ?? Date.now(),
+      };
+      return { ...base, uses: ensureUses(acc, columns, globalDuration) } as Account;
+    });
+    // Keep legacy top-level fields in sync with the primary column.
+    const primary = columns[0];
+    if (primary) {
+      for (const a of accounts) {
+        const s = a.uses?.[primary.id];
+        if (s) {
+          a.status = s.status;
+          a.usedAt = s.usedAt;
+          a.resetAt = s.resetAt;
+          a.usageDuration = s.usageDuration;
+        }
+      }
+    }
+    return { accounts, globalDuration, columns };
   } catch (error) {
     console.error("Failed to load storage", error);
-    const initial: { accounts: Account[]; globalDuration: number } = {
+    const initial: StorageData = {
       accounts: [],
       globalDuration: DEFAULT_GLOBAL_DURATION,
+      columns: makeDefaultColumns(DEFAULT_GLOBAL_DURATION),
     };
     saveStorage(initial);
     return initial;
   }
 };
 
-export const saveStorage = (data: { accounts: Account[]; globalDuration: number }) => {
+export const saveStorage = (data: { accounts: Account[]; globalDuration: number; columns?: TrackerColumn[] }) => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    let columns = data.columns;
+    if (!columns) {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as any;
+          columns = sanitizeColumns(parsed.columns, data.globalDuration);
+        }
+      } catch { /* fall through to default */ }
+      columns = columns ?? makeDefaultColumns(data.globalDuration);
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...data, columns }));
   } catch (error) {
     console.error("Failed to save storage", error);
   }
@@ -50,6 +137,10 @@ export const saveStorage = (data: { accounts: Account[]; globalDuration: number 
 
 export const getAccounts = (): Account[] => {
   return loadStorage().accounts;
+};
+
+export const getColumns = (): TrackerColumn[] => {
+  return loadStorage().columns;
 };
 
 export const getGlobalDuration = (): number => {
@@ -69,15 +160,27 @@ export const addAccount = (account: {
 }): Account => {
   const storage = loadStorage();
   const now = Date.now();
+  const primary = storage.columns[0];
+  const status = account.status || "available";
+  const usageDuration = account.usageDuration ?? storage.globalDuration;
+  const uses: Record<string, TrackerState> = {};
+  for (const col of storage.columns) {
+    if (col.id === primary?.id) {
+      uses[col.id] = { status, usedAt: null, resetAt: null, usageDuration };
+    } else {
+      uses[col.id] = { status: "available", usedAt: null, resetAt: null, usageDuration: col.duration };
+    }
+  }
   const newAccount: Account = {
     id: crypto.randomUUID(),
     name: account.name,
     email: account.email,
     notes: account.notes,
-    status: account.status || "available",
+    status,
     usedAt: null,
     resetAt: null,
-    usageDuration: account.usageDuration ?? storage.globalDuration,
+    usageDuration,
+    uses,
     createdAt: now,
     updatedAt: now,
   };
@@ -132,11 +235,117 @@ export const updateAccount = (id: string, updates: {
     usedAt,
     resetAt,
     usageDuration,
+    uses: (() => {
+      const primary = storage.columns[0];
+      const uses = { ...(existing.uses ?? {}) };
+      if (primary) {
+        uses[primary.id] = { status, usedAt, resetAt, usageDuration };
+      }
+      return uses;
+    })(),
     updatedAt: now,
   };
 
   saveStorage(storage);
   return storage.accounts[index];
+};
+
+export const getColumnState = (acc: Account, columnId: string, fallbackDuration: number): TrackerState => {
+  const s = acc.uses?.[columnId];
+  if (s && (s.status === "available" || s.status === "used")) {
+    return { status: s.status, usedAt: s.usedAt ?? null, resetAt: s.resetAt ?? null, usageDuration: s.usageDuration ?? fallbackDuration };
+  }
+  return { status: "available", usedAt: null, resetAt: null, usageDuration: fallbackDuration };
+};
+
+export const toggleAccountColumn = (accountId: string, columnId: string): Account | undefined => {
+  const storage = loadStorage();
+  const column = storage.columns.find((c) => c.id === columnId);
+  if (!column) return undefined;
+  const index = storage.accounts.findIndex((acc: Account) => acc.id === accountId);
+  if (index === -1) return undefined;
+  const existing = storage.accounts[index];
+  const now = Date.now();
+  const uses = { ...(existing.uses ?? {}) };
+  const current = getColumnState(existing, columnId, column.duration);
+  const next: TrackerState =
+    current.status === "available"
+      ? { status: "used", usedAt: now, resetAt: now + column.duration, usageDuration: column.duration }
+      : { status: "available", usedAt: null, resetAt: null, usageDuration: column.duration };
+  uses[columnId] = next;
+  const primary = storage.columns[0];
+  storage.accounts[index] = {
+    ...existing,
+    status: primary && primary.id === columnId ? next.status : (primary ? getColumnState(existing, primary.id, existing.usageDuration).status : existing.status),
+    usedAt: primary && primary.id === columnId ? next.usedAt : existing.usedAt,
+    resetAt: primary && primary.id === columnId ? next.resetAt : existing.resetAt,
+    usageDuration: primary && primary.id === columnId ? next.usageDuration : existing.usageDuration,
+    uses,
+    updatedAt: now,
+  };
+  saveStorage(storage);
+  return storage.accounts[index];
+};
+
+export const addTrackerColumn = (name: string, duration: number): TrackerColumn => {
+  const storage = loadStorage();
+  const cleanName = name.trim().slice(0, 24) || `COL ${storage.columns.length + 1}`;
+  const col: TrackerColumn = { id: crypto.randomUUID(), name: cleanName, duration };
+  storage.columns.push(col);
+  for (const acc of storage.accounts) {
+    acc.uses = { ...(acc.uses ?? {}), [col.id]: { status: "available", usedAt: null, resetAt: null, usageDuration: duration } };
+  }
+  saveStorage(storage);
+  return col;
+};
+
+export const renameTrackerColumn = (id: string, name: string): TrackerColumn | undefined => {
+  const storage = loadStorage();
+  const col = storage.columns.find((c) => c.id === id);
+  if (!col) return undefined;
+  const cleanName = name.trim().slice(0, 24);
+  if (!cleanName) return undefined;
+  col.name = cleanName;
+  saveStorage(storage);
+  return col;
+};
+
+export const setTrackerColumnDuration = (id: string, duration: number): TrackerColumn | undefined => {
+  const storage = loadStorage();
+  const col = storage.columns.find((c) => c.id === id);
+  if (!col || !(duration > 0)) return undefined;
+  col.duration = duration;
+  saveStorage(storage);
+  return col;
+};
+
+export const deleteTrackerColumn = (id: string): boolean => {
+  const storage = loadStorage();
+  if (storage.columns.length <= 1) return false;
+  const before = storage.columns.length;
+  storage.columns = storage.columns.filter((c) => c.id !== id);
+  if (storage.columns.length === before) return false;
+  for (const acc of storage.accounts) {
+    if (acc.uses && acc.uses[id]) {
+      const { [id]: _removed, ...rest } = acc.uses;
+      acc.uses = rest;
+    }
+  }
+  // Re-sync legacy fields to the (possibly new) primary column.
+  const primary = storage.columns[0];
+  if (primary) {
+    for (const acc of storage.accounts) {
+      const s = acc.uses?.[primary.id];
+      if (s) {
+        acc.status = s.status;
+        acc.usedAt = s.usedAt;
+        acc.resetAt = s.resetAt;
+        acc.usageDuration = s.usageDuration;
+      }
+    }
+  }
+  saveStorage(storage);
+  return true;
 };
 
 export const deleteAccount = (id: string): boolean => {
@@ -162,6 +371,18 @@ export const importData = (jsonData: any): { success: boolean; imported: number;
 
     const existing = loadStorage();
     const globalDuration = jsonData.globalDuration ?? existing.globalDuration;
+    if (Array.isArray(jsonData.columns) && jsonData.columns.length > 0) {
+      const incoming = sanitizeColumns(jsonData.columns, globalDuration);
+      // Merge by id: keep existing, add missing.
+      for (const col of incoming) {
+        if (!existing.columns.some((c) => c.id === col.id)) {
+          existing.columns.push(col);
+          for (const acc of existing.accounts) {
+            acc.uses = { ...(acc.uses ?? {}), [col.id]: { status: "available", usedAt: null, resetAt: null, usageDuration: col.duration } };
+          }
+        }
+      }
+    }
 
     for (const acc of jsonData.accounts) {
       if (!acc.name || !acc.email) {
@@ -169,15 +390,39 @@ export const importData = (jsonData: any): { success: boolean; imported: number;
         continue;
       }
       const parsedDuration = DURATION_LABELS[acc.usageDuration] ?? DEFAULT_GLOBAL_DURATION;
+      const primary = existing.columns[0];
+      const uses: Record<string, TrackerState> = {};
+      for (const col of existing.columns) {
+        const s = acc.uses?.[col.id];
+        if (s && (s.status === "available" || s.status === "used")) {
+          uses[col.id] = {
+            status: s.status,
+            usedAt: s.usedAt ?? null,
+            resetAt: s.resetAt ?? null,
+            usageDuration: s.usageDuration ?? col.duration,
+          };
+        } else if (col.id === primary?.id) {
+          uses[col.id] = {
+            status: acc.status === "used" ? "used" : "available",
+            usedAt: acc.usedAt ?? null,
+            resetAt: acc.resetAt ?? null,
+            usageDuration: parsedDuration,
+          };
+        } else {
+          uses[col.id] = { status: "available", usedAt: null, resetAt: null, usageDuration: col.duration };
+        }
+      }
+      const primaryState = primary ? uses[primary.id] : undefined;
       const newAcc: Account = {
         id: acc.id || crypto.randomUUID(),
         name: acc.name,
         email: acc.email,
         notes: acc.notes,
-        status: acc.status || "available",
-        usedAt: acc.usedAt ?? null,
-        resetAt: acc.resetAt ?? null,
-        usageDuration: parsedDuration,
+        status: primaryState?.status ?? "available",
+        usedAt: primaryState?.usedAt ?? null,
+        resetAt: primaryState?.resetAt ?? null,
+        usageDuration: primaryState?.usageDuration ?? parsedDuration,
+        uses,
         createdAt: acc.createdAt ?? Date.now(),
         updatedAt: acc.updatedAt ?? Date.now(),
       };
@@ -197,12 +442,13 @@ export const importData = (jsonData: any): { success: boolean; imported: number;
   }
 };
 
-export const exportData = (): { version: number; accounts: Account[]; globalDuration: number } => {
+export const exportData = (): { version: number; accounts: Account[]; globalDuration: number; columns: TrackerColumn[] } => {
   const storage = loadStorage();
   return {
     version: 1,
     accounts: storage.accounts.map((acc) => ({ ...acc })),
     globalDuration: storage.globalDuration,
+    columns: storage.columns.map((c) => ({ ...c })),
   };
 };
 
@@ -251,6 +497,15 @@ const SEED_ACCOUNTS: { name: string; email: string }[] = [
   { name: "Manthan", email: "antigravity7250@gmail.com" },
   { name: "Antigravity _1", email: "antigravity7251@gmail.com" },
   { name: "Antigravity _2", email: "antigravity7252@gmail.com" },
+  { name: "Bitto Jaiswal", email: "bittojaiswal12@gmail.com" },
+  { name: "suman Jaiswal", email: "sumanjaiswal1606@gmail.com" },
+  { name: "Priya Mishra", email: "akmisking1234@gmail.com" },
+  { name: "Antigravity_3", email: "antigravity7253@gmail.com" },
+  { name: "Antigravity _7", email: "antigravity7257@gmail.com" },
+  { name: "Rakesh Jaiswal", email: "rakeshjaiswal2612@gmail.com" },
+  { name: "Anrigravity _8", email: "qntigrqvity7258@gmail.com" },
+  { name: "Antigravity _9", email: "anrigravity7259@gmail.com" },
+  { name: "Antigravity_5", email: "antigravity7255@gmail.com" },
 ];
 
 const SEED_FLAG_KEY = "antigravity_seeded_v1";
@@ -260,18 +515,28 @@ export const seedAccountsIfEmpty = (): boolean => {
   if (storage.accounts.length > 0) return false;
 
   const now = Date.now();
-  const newAccounts: Account[] = SEED_ACCOUNTS.map((seed, i) => ({
-    id: crypto.randomUUID(),
-    name: seed.name,
-    email: seed.email,
-    notes: "",
-    status: "available" as AccountStatus,
-    usedAt: null,
-    resetAt: null,
-    usageDuration: SEVEN_DAYS,
-    createdAt: now - (SEED_ACCOUNTS.length - i) * 60000,
-    updatedAt: now - (SEED_ACCOUNTS.length - i) * 60000,
-  }));
+  const newAccounts: Account[] = SEED_ACCOUNTS.map((seed, i) => {
+    const uses: Record<string, TrackerState> = {};
+    for (const col of storage.columns) {
+      uses[col.id] = { status: "available", usedAt: null, resetAt: null, usageDuration: col.duration };
+    }
+    // Primary column mirrors the 7-day legacy default.
+    const primary = storage.columns[0];
+    if (primary) uses[primary.id] = { status: "available", usedAt: null, resetAt: null, usageDuration: SEVEN_DAYS };
+    return {
+      id: crypto.randomUUID(),
+      name: seed.name,
+      email: seed.email,
+      notes: "",
+      status: "available" as AccountStatus,
+      usedAt: null,
+      resetAt: null,
+      usageDuration: SEVEN_DAYS,
+      uses,
+      createdAt: now - (SEED_ACCOUNTS.length - i) * 60000,
+      updatedAt: now - (SEED_ACCOUNTS.length - i) * 60000,
+    };
+  });
 
   storage.accounts = newAccounts;
   saveStorage(storage);
@@ -281,31 +546,38 @@ export const seedAccountsIfEmpty = (): boolean => {
 export const reconcileExpiration = (): Account[] => {
   const storage = loadStorage();
   const now = Date.now();
+  let changed = false;
   const accounts = storage.accounts.map((acc: Account) => {
+    const uses = { ...(acc.uses ?? {}) };
+    for (const col of storage.columns) {
+      const s = uses[col.id];
+      if (s && s.status === "used" && s.resetAt !== null && now >= s.resetAt) {
+        uses[col.id] = { status: "available", usedAt: null, resetAt: null, usageDuration: col.duration };
+        changed = true;
+      }
+    }
+    const primary = storage.columns[0];
+    const ps = primary ? uses[primary.id] : undefined;
     let status = acc.status;
     let usedAt = acc.usedAt;
     let resetAt = acc.resetAt;
-
-    if (status === "used" && resetAt !== null && now >= resetAt) {
+    if (ps && (ps.status !== status || ps.usedAt !== usedAt || ps.resetAt !== resetAt)) {
+      status = ps.status;
+      usedAt = ps.usedAt;
+      resetAt = ps.resetAt;
+      changed = true;
+    } else if (status === "used" && resetAt !== null && now >= resetAt) {
       status = "available";
       usedAt = null;
       resetAt = null;
+      changed = true;
     }
 
-    return { ...acc, status, usedAt, resetAt } as Account;
+    return { ...acc, status, usedAt, resetAt, uses } as Account;
   });
 
-  const reconciled = accounts.filter(
-    (acc, i) => acc.status !== storage.accounts[i].status || acc.usedAt !== storage.accounts[i].usedAt || acc.resetAt !== storage.accounts[i].resetAt
-  );
-
-  if (reconciled.length > 0) {
-    storage.accounts = reconciled.map((acc, i) => ({
-      ...storage.accounts[i],
-      status: acc.status,
-      usedAt: acc.usedAt,
-      resetAt: acc.resetAt,
-    }));
+  if (changed) {
+    storage.accounts = accounts;
     saveStorage(storage);
   }
 
