@@ -9,6 +9,7 @@ import { DEFAULT_GLOBAL_DURATION, Account, TrackerColumn } from "./lib/account-m
 
 const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const TODAY = new Date();
+const DELETE_COLUMN_PASSWORD = "625017172";
 
 function AccountCheckbox({ checked, onToggle, deleteMode }: { checked: boolean; onToggle: () => void; deleteMode: boolean }) {
   return (
@@ -242,6 +243,12 @@ export default function Page() {
 
   const handleDeleteColumn = useCallback((columnId: string) => {
     const col = columns.find((c) => c.id === columnId);
+    const input = window.prompt(`Enter password to delete column "${col?.name ?? "column"}":`);
+    if (input === null) return;
+    if (input !== DELETE_COLUMN_PASSWORD) {
+      showToast("error", "Wrong password", "Column was not deleted");
+      return;
+    }
     const ok = deleteTrackerColumn(columnId);
     if (ok) {
       setColumns(getColumns());
