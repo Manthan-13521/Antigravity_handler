@@ -91,16 +91,24 @@ export const getRecommendedSortOrder = (accounts: Account[]): string[] => {
   return [...available.map((a) => a.id), ...used.map((u) => u.id)];
 };
 
+const startsWithA = (acc: Account): boolean => {
+  const n = (acc.name || "").trim().toLowerCase();
+  const e = (acc.email || "").trim().toLowerCase();
+  return n.startsWith("a") || e.startsWith("a");
+};
+
 export const getSortOrder = (
   accounts: Account[],
   sortBy: "recommended" | "recentlyUsed" | "availableFirst" | "resetSoonest" | "accountName"
 ): string[] => {
+  let order: string[];
   switch (sortBy) {
     case "recommended": {
-      return getRecommendedSortOrder(accounts);
+      order = getRecommendedSortOrder(accounts);
+      break;
     }
     case "availableFirst": {
-      return accounts
+      order = accounts
         .sort((a, b) => {
           if (a.status === "available" && b.status !== "available") return -1;
           if (a.status !== "available" && b.status === "available") return 1;
@@ -108,9 +116,10 @@ export const getSortOrder = (
         })
         .sort((a, b) => (a.resetAt ?? 0) - (b.resetAt ?? 0))
         .map((acc) => acc.id);
+      break;
     }
     case "resetSoonest": {
-      return accounts
+      order = accounts
         .sort((a, b) => {
           if (a.resetAt === null && b.resetAt !== null) return 1;
           if (a.resetAt !== null && b.resetAt === null) return -1;
@@ -118,15 +127,27 @@ export const getSortOrder = (
           return (a.resetAt ?? 0) - (b.resetAt ?? 0);
         })
         .map((acc) => acc.id);
+      break;
     }
     case "accountName": {
-      return [...accounts]
+      order = [...accounts]
         .sort((a, b) => (a.name > b.name ? 1 : -1))
         .map((acc) => acc.id);
+      break;
     }
     default:
-      return getRecommendedSortOrder(accounts);
+      order = getRecommendedSortOrder(accounts);
   }
+  // Accounts whose name or email starts with "a" always sink to the bottom.
+  const byId = new Map(accounts.map((a) => [a.id, a]));
+  const normal: string[] = [];
+  const aGroup: string[] = [];
+  for (const id of order) {
+    const acc = byId.get(id);
+    if (acc && startsWithA(acc)) aGroup.push(id);
+    else normal.push(id);
+  }
+  return [...normal, ...aGroup];
 };
 
 export const checkExpiration = (): { expiredCount: number; justSwitched: Account[] } => {
